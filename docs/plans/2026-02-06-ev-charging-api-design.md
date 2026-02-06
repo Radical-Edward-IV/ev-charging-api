@@ -1,75 +1,78 @@
-# EV Charging API - Design Document
+# EV 충전소 관리 API - 설계 문서
 
-**Date:** 2026-02-06
-**Status:** Approved
-**Purpose:** GS Chargevy Backend Developer Portfolio Project
+**작성일:** 2026-02-06  
+**상태:** 승인됨  
+**목적:** 백엔드 개발자 포트폴리오 프로젝트
 
 ---
 
-## 1. Overview
+## 1. 개요
 
-EV charging station management REST API.
-Seoul metropolitan area charging station data is seeded from the Korea Environment Corporation public API,
-and the API provides station search, charger status management, and charging history features.
+EV 충전소 관리 REST API.
+한국환경공단 공공 API에서 서울 수도권 충전소 데이터를 시딩하고,
+충전소 검색, 충전기 상태 관리, 충전 이력 기능을 제공한다.
 
-### Goals
-- Demonstrate domain understanding of the EV charging business
-- Production-quality code with TDD
-- Completable as MVP within 2 days
+### 목표
+- EV 충전 비즈니스 도메인 이해도 시연
+- TDD 적용한 프로덕션 수준 코드 품질
+- 2일 내 완성 가능한 MVP
 
-### Tech Stack
+### 기술 스택
 - Java 25, Spring Boot 4.x
-- PostgreSQL 17 (Docker container)
+- PostgreSQL 17 (Docker 컨테이너)
 - Spring Data JPA
 - Swagger/OpenAPI 3.0
 - Docker Compose
-- Testcontainers (integration tests)
+- Testcontainers (통합 테스트)
+
+### 개발 환경
+- **Dev Container** 사용: 로컬에 JDK/PostgreSQL을 설치하지 않고, 컨테이너 기반으로 동일한 개발 환경을 보장한다. 프로젝트 루트의 `.devcontainer/` 설정으로 에디터에서 컨테이너 내부에서 개발·실행·테스트를 진행한다.
 
 ---
 
-## 2. Domain Model
+## 2. 도메인 모델
 
-### 2.1 Entities
+### 2.1 엔티티
 
-#### ChargingStation
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Long (PK) | Auto-generated ID |
-| stationCode | String | Original station ID from public API (statId) |
-| name | String | Station name |
-| address | String | Address |
-| latitude | Double | Latitude |
-| longitude | Double | Longitude |
-| operatorName | String | Operating organization name |
-| contactNumber | String | Contact number |
-| operatingHours | String | Operating hours |
-| createdAt | LocalDateTime | Created timestamp |
-| updatedAt | LocalDateTime | Updated timestamp |
+#### ChargingStation (충전소)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| id | Long (PK) | 자동 생성 ID |
+| stationCode | String | 공공 API 원본 충전소 ID (statId) |
+| name | String | 충전소명 |
+| address | String | 주소 |
+| latitude | Double | 위도 |
+| longitude | Double | 경도 |
+| operatorName | String | 운영기관명 |
+| contactNumber | String | 연락처 |
+| operatingHours | String | 이용가능시간 |
+| createdAt | LocalDateTime | 생성 일시 |
+| updatedAt | LocalDateTime | 수정 일시 |
 
-#### Charger
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Long (PK) | Auto-generated ID |
-| station | ChargingStation (FK) | Belongs to station |
-| chargerCode | String | Original charger ID from public API (chgerId) |
+#### Charger (충전기)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| id | Long (PK) | 자동 생성 ID |
+| station | ChargingStation (FK) | 소속 충전소 |
+| chargerCode | String | 공공 API 원본 충전기 ID (chgerId) |
 | type | ChargerType (Enum) | DC_FAST, AC_SLOW, DC_COMBO |
 | status | ChargerStatus (Enum) | AVAILABLE, CHARGING, OUT_OF_SERVICE |
-| powerKw | BigDecimal | Charging output (kW) |
+| powerKw | BigDecimal | 충전 출력 (kW) |
 | connectorType | ConnectorType (Enum) | CCS1, CHADEMO, AC_TYPE_1, AC_TYPE_3 |
-| lastStatusChangedAt | LocalDateTime | Last status change timestamp |
+| lastStatusChangedAt | LocalDateTime | 마지막 상태 변경 일시 |
 
-#### ChargingSession
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Long (PK) | Auto-generated ID |
-| charger | Charger (FK) | Associated charger |
-| startTime | LocalDateTime | Charging start time |
-| endTime | LocalDateTime | Charging end time |
-| energyDeliveredKwh | BigDecimal | Energy delivered (kWh) |
-| cost | BigDecimal | Charging cost |
+#### ChargingSession (충전 세션)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| id | Long (PK) | 자동 생성 ID |
+| charger | Charger (FK) | 연결된 충전기 |
+| startTime | LocalDateTime | 충전 시작 시간 |
+| endTime | LocalDateTime | 충전 종료 시간 |
+| energyDeliveredKwh | BigDecimal | 충전량 (kWh) |
+| cost | BigDecimal | 충전 요금 |
 | status | SessionStatus (Enum) | IN_PROGRESS, COMPLETED, FAILED |
 
-### 2.2 Charger State Machine
+### 2.2 충전기 상태 머신
 
 ```
 AVAILABLE ──→ CHARGING ──→ AVAILABLE
@@ -78,24 +81,24 @@ AVAILABLE ──→ CHARGING ──→ AVAILABLE
 OUT_OF_SERVICE ←───┘
     │
     ↓
-AVAILABLE (repair complete)
+AVAILABLE (수리 완료)
 ```
 
-Valid transitions:
-- AVAILABLE → CHARGING (start charging)
-- AVAILABLE → OUT_OF_SERVICE (breakdown)
-- CHARGING → AVAILABLE (charging complete)
-- CHARGING → OUT_OF_SERVICE (failure during charging)
-- OUT_OF_SERVICE → AVAILABLE (repair complete)
+유효한 전이:
+- AVAILABLE → CHARGING (충전 시작)
+- AVAILABLE → OUT_OF_SERVICE (고장 발생)
+- CHARGING → AVAILABLE (충전 완료)
+- CHARGING → OUT_OF_SERVICE (충전 중 고장)
+- OUT_OF_SERVICE → AVAILABLE (수리 완료)
 
-Invalid transitions throw `InvalidStatusTransitionException`.
+유효하지 않은 전이 시 `InvalidStatusTransitionException` 발생.
 
-### 2.3 Enums
+### 2.3 Enum 정의
 
 **ChargerType:** DC_FAST, AC_SLOW, DC_COMBO
 
 **ChargerStatus:** AVAILABLE, CHARGING, OUT_OF_SERVICE
-- Contains `canTransitionTo(ChargerStatus target)` validation method
+- `canTransitionTo(ChargerStatus target)` 상태 전이 검증 메서드 포함
 
 **ConnectorType:** CCS1, CHADEMO, AC_TYPE_1, AC_TYPE_3
 
@@ -103,38 +106,38 @@ Invalid transitions throw `InvalidStatusTransitionException`.
 
 ---
 
-## 3. API Endpoints
+## 3. API 엔드포인트
 
-### 3.1 Charging Station
+### 3.1 충전소 (ChargingStation)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/stations` | Station list (paging) |
-| GET | `/api/v1/stations/nearby?lat={}&lng={}&radius={}` | Location-based search (Haversine) |
-| GET | `/api/v1/stations/{id}` | Station detail (includes charger list) |
-| POST | `/api/v1/stations` | Register station |
-| PUT | `/api/v1/stations/{id}` | Update station info |
-| DELETE | `/api/v1/stations/{id}` | Delete station |
+| Method | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| GET | `/api/v1/stations` | 충전소 전체 목록 (페이징) |
+| GET | `/api/v1/stations/nearby?lat={}&lng={}&radius={}` | 위치 기반 검색 (Haversine) |
+| GET | `/api/v1/stations/{id}` | 충전소 상세 조회 (충전기 목록 포함) |
+| POST | `/api/v1/stations` | 충전소 등록 |
+| PUT | `/api/v1/stations/{id}` | 충전소 정보 수정 |
+| DELETE | `/api/v1/stations/{id}` | 충전소 삭제 |
 
-### 3.2 Charger
+### 3.2 충전기 (Charger)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/stations/{stationId}/chargers` | Charger list for station |
-| POST | `/api/v1/stations/{stationId}/chargers` | Register charger |
-| PATCH | `/api/v1/chargers/{id}/status` | Change charger status (state machine validation) |
+| Method | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| GET | `/api/v1/stations/{stationId}/chargers` | 충전소의 충전기 목록 |
+| POST | `/api/v1/stations/{stationId}/chargers` | 충전기 등록 |
+| PATCH | `/api/v1/chargers/{id}/status` | 충전기 상태 변경 (상태머신 검증) |
 
-### 3.3 Charging Session
+### 3.3 충전 세션 (ChargingSession)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/chargers/{chargerId}/sessions` | Start charging |
-| PATCH | `/api/v1/sessions/{id}/complete` | Complete charging |
-| GET | `/api/v1/sessions?chargerId={}&startDate={}&endDate={}` | Charging history (filtering) |
+| Method | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| POST | `/api/v1/chargers/{chargerId}/sessions` | 충전 시작 |
+| PATCH | `/api/v1/sessions/{id}/complete` | 충전 완료 |
+| GET | `/api/v1/sessions?chargerId={}&startDate={}&endDate={}` | 충전 이력 조회 (필터링) |
 
-### 3.4 Response Format
+### 3.4 응답 형식
 
-All responses use unified `ApiResponse<T>` wrapper:
+모든 응답은 통일된 `ApiResponse<T>` wrapper 사용:
 
 ```json
 {
@@ -144,7 +147,7 @@ All responses use unified `ApiResponse<T>` wrapper:
 }
 ```
 
-Error response:
+에러 응답:
 
 ```json
 {
@@ -152,28 +155,28 @@ Error response:
   "data": null,
   "error": {
     "code": "INVALID_STATUS_TRANSITION",
-    "message": "Cannot transition from CHARGING to CHARGING"
+    "message": "CHARGING에서 CHARGING으로 전이할 수 없습니다"
   }
 }
 ```
 
 ---
 
-## 4. Project Structure
+## 4. 프로젝트 구조
 
 ```
 src/main/java/com/evcharging/api/
 ├── EvChargingApiApplication.java
 │
-├── domain/                          # Domain layer
+├── domain/                          # 도메인 계층
 │   ├── station/
-│   │   ├── ChargingStation.java     # Entity
-│   │   ├── StationRepository.java   # Repository interface
-│   │   └── StationService.java      # Business logic
+│   │   ├── ChargingStation.java     # 엔티티
+│   │   ├── StationRepository.java   # Repository 인터페이스
+│   │   └── StationService.java      # 비즈니스 로직
 │   ├── charger/
 │   │   ├── Charger.java
 │   │   ├── ChargerType.java         # Enum
-│   │   ├── ChargerStatus.java       # Enum + state transition validation
+│   │   ├── ChargerStatus.java       # Enum + 상태 전이 검증
 │   │   ├── ConnectorType.java       # Enum
 │   │   ├── ChargerRepository.java
 │   │   └── ChargerService.java
@@ -183,7 +186,7 @@ src/main/java/com/evcharging/api/
 │       ├── SessionRepository.java
 │       └── SessionService.java
 │
-├── api/                             # API layer (Controller)
+├── api/                             # API 계층 (Controller)
 │   ├── station/
 │   │   ├── StationController.java
 │   │   ├── StationRequest.java      # DTO
@@ -197,31 +200,31 @@ src/main/java/com/evcharging/api/
 │       ├── SessionStartRequest.java
 │       └── SessionResponse.java
 │
-├── common/                          # Common
-│   ├── ApiResponse.java             # Unified response wrapper
-│   ├── ErrorCode.java               # Error code Enum
+├── common/                          # 공통
+│   ├── ApiResponse.java             # 통일된 응답 wrapper
+│   ├── ErrorCode.java               # 에러 코드 Enum
 │   └── GlobalExceptionHandler.java  # @RestControllerAdvice
 │
-├── infra/                           # External infrastructure
+├── infra/                           # 외부 인프라 연동
 │   └── openapi/
-│       ├── EvChargerApiClient.java  # Public API call client
-│       ├── EvChargerApiResponse.java # API response DTO
-│       └── DataSeeder.java          # Initial data seeding
+│       ├── EvChargerApiClient.java  # 공공 API 호출 클라이언트
+│       ├── EvChargerApiResponse.java # API 응답 DTO
+│       └── DataSeeder.java          # 초기 데이터 시딩
 │
-└── config/                          # Configuration
-    └── SwaggerConfig.java           # OpenAPI configuration
+└── config/                          # 설정
+    └── SwaggerConfig.java           # OpenAPI 설정
 
 src/main/resources/
 ├── application.yml
-├── application-local.yml            # Local development
-└── data.sql                         # Fallback sample data
+├── application-local.yml            # 로컬 개발용
+└── data.sql                         # 폴백 샘플 데이터
 
 src/test/java/com/evcharging/api/
 ├── domain/
 │   ├── charger/
-│   │   └── ChargerStatusTest.java   # State machine unit test
+│   │   └── ChargerStatusTest.java   # 상태 머신 단위 테스트
 │   └── session/
-│       └── SessionServiceTest.java  # Service layer unit test
+│       └── SessionServiceTest.java  # 서비스 계층 단위 테스트
 └── api/
     ├── station/
     │   └── StationControllerTest.java  # @WebMvcTest
@@ -231,45 +234,45 @@ src/test/java/com/evcharging/api/
 
 ---
 
-## 5. Public API Integration
+## 5. 공공 API 연동
 
-### 5.1 Korea Environment Corporation API
+### 5.1 한국환경공단 API
 
-**Endpoint:** `http://apis.data.go.kr/B552584/EvCharger/getChargerInfo`
+**엔드포인트:** `http://apis.data.go.kr/B552584/EvCharger/getChargerInfo`
 
-**Parameters:**
-- `ServiceKey`: Public data portal API key
-- `pageNo` / `numOfRows`: Paging
-- `zcode=11`: Seoul metropolitan area filter
+**요청 파라미터:**
+- `ServiceKey`: 공공데이터포털 API 인증키
+- `pageNo` / `numOfRows`: 페이징
+- `zcode=11`: 서울 수도권 필터
 
-**Field Mapping:**
+**필드 매핑:**
 
-| Public API | Domain Model | Description |
-|-----------|-------------|-------------|
-| statNm | ChargingStation.name | Station name |
-| statId | ChargingStation.stationCode | Original station ID |
-| addr | ChargingStation.address | Address |
-| lat / lng | ChargingStation.latitude/longitude | Coordinates |
-| busiNm | ChargingStation.operatorName | Operator name |
-| busiCall | ChargingStation.contactNumber | Contact |
-| useTime | ChargingStation.operatingHours | Operating hours |
-| chgerId | Charger.chargerCode | Original charger ID |
-| chgerType | Charger.type | Charger type |
-| stat | Charger.status | Charger status |
-| output | Charger.powerKw | Output (kW) |
+| 공공 API 필드 | 도메인 모델 | 설명 |
+|--------------|-----------|------|
+| statNm | ChargingStation.name | 충전소명 |
+| statId | ChargingStation.stationCode | 원본 충전소 ID |
+| addr | ChargingStation.address | 주소 |
+| lat / lng | ChargingStation.latitude/longitude | 위도/경도 |
+| busiNm | ChargingStation.operatorName | 운영기관명 |
+| busiCall | ChargingStation.contactNumber | 연락처 |
+| useTime | ChargingStation.operatingHours | 이용가능시간 |
+| chgerId | Charger.chargerCode | 원본 충전기 ID |
+| chgerType | Charger.type | 충전기 타입 |
+| stat | Charger.status | 충전기 상태 |
+| output | Charger.powerKw | 충전 출력 (kW) |
 
-### 5.2 Seeding Strategy
+### 5.2 시딩 전략
 
-1. `DataSeeder` implements `ApplicationRunner`
-2. On startup, check if DB is empty
-3. If empty, call public API with `zcode=11` (Seoul)
-4. Parse XML response → convert to entities → save to DB
-5. On API failure, fall back to built-in `data.sql`
-6. API key managed via environment variable: `${OPEN_API_KEY}`
+1. `DataSeeder`가 `ApplicationRunner` 구현
+2. 기동 시 DB가 비어있는지 확인
+3. 비어있으면 공공 API 호출 (`zcode=11`, 서울)
+4. XML 응답 파싱 → 엔티티 변환 → DB 저장
+5. API 호출 실패 시 내장 `data.sql`로 폴백
+6. API 키는 환경 변수로 관리: `${OPEN_API_KEY}`
 
 ---
 
-## 6. Infrastructure
+## 6. 인프라
 
 ### 6.1 Docker Compose
 
@@ -301,12 +304,12 @@ services:
 ### 6.2 Dockerfile (Multi-stage)
 
 ```dockerfile
-# Build stage
+# 빌드 단계
 FROM eclipse-temurin:25-jdk AS builder
 COPY . .
 RUN ./gradlew bootJar
 
-# Runtime stage
+# 실행 단계
 FROM eclipse-temurin:25-jre
 COPY --from=builder build/libs/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
@@ -314,9 +317,9 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
 ---
 
-## 7. Location-Based Search
+## 7. 위치 기반 검색
 
-### Haversine Formula (Native Query)
+### Haversine 공식 (Native Query)
 
 ```sql
 SELECT s.*, (
@@ -331,47 +334,47 @@ HAVING distance < :radius
 ORDER BY distance
 ```
 
-- Input: lat, lng, radius (km)
-- Returns stations sorted by distance
-- Index on latitude/longitude columns for performance
+- 입력: lat, lng, radius (km)
+- 거리순 정렬된 충전소 반환
+- latitude/longitude 컬럼에 인덱스 설정으로 성능 최적화
 
 ---
 
-## 8. Testing Strategy
+## 8. 테스트 전략
 
-### 8.1 Unit Tests
-- **ChargerStatusTest**: Validate all valid/invalid state transitions
-- **SessionServiceTest**: Start/complete charging business logic (Mockito)
+### 8.1 단위 테스트
+- **ChargerStatusTest**: 모든 유효/무효 상태 전이 검증
+- **SessionServiceTest**: 충전 시작/완료 비즈니스 로직 (Mockito)
 
-### 8.2 API Tests
-- **StationControllerTest**: `@WebMvcTest` - endpoint validation, request/response format
+### 8.2 API 테스트
+- **StationControllerTest**: `@WebMvcTest` - 엔드포인트 검증, 요청/응답 형식
 
-### 8.3 Integration Tests
+### 8.3 통합 테스트
 - **ChargingFlowIntegrationTest**: `@SpringBootTest` + Testcontainers (PostgreSQL)
-  - Full charging flow: station lookup → start charging → complete → verify history
+  - 전체 충전 플로우: 충전소 조회 → 충전 시작 → 충전 완료 → 이력 확인
 
 ---
 
-## 9. Error Handling
+## 9. 에러 처리
 
 ### ErrorCode Enum
 
-| Code | HTTP Status | Description |
-|------|------------|-------------|
-| STATION_NOT_FOUND | 404 | Station not found |
-| CHARGER_NOT_FOUND | 404 | Charger not found |
-| SESSION_NOT_FOUND | 404 | Session not found |
-| INVALID_STATUS_TRANSITION | 400 | Invalid charger status transition |
-| CHARGER_NOT_AVAILABLE | 409 | Charger not available for charging |
-| SESSION_ALREADY_COMPLETED | 409 | Session already completed |
+| 코드 | HTTP 상태 | 설명 |
+|------|----------|------|
+| STATION_NOT_FOUND | 404 | 충전소를 찾을 수 없음 |
+| CHARGER_NOT_FOUND | 404 | 충전기를 찾을 수 없음 |
+| SESSION_NOT_FOUND | 404 | 충전 세션을 찾을 수 없음 |
+| INVALID_STATUS_TRANSITION | 400 | 유효하지 않은 충전기 상태 전이 |
+| CHARGER_NOT_AVAILABLE | 409 | 충전기가 사용 가능 상태가 아님 |
+| SESSION_ALREADY_COMPLETED | 409 | 이미 완료된 충전 세션 |
 
 ### GlobalExceptionHandler
-- Catches domain exceptions and maps to appropriate HTTP status codes
-- Returns unified `ApiResponse` error format
+- 도메인 예외를 잡아서 적절한 HTTP 상태 코드로 매핑
+- 통일된 `ApiResponse` 에러 형식 반환
 
 ---
 
-## 10. Data Sources
+## 10. 참고 자료
 
-- [Korea Environment Corporation EV Charger Info API](https://www.data.go.kr/data/15076352/openapi.do)
-- [Public Data Portal API Usage Guide](https://www.dinolabs.ai/383)
+- [한국환경공단_전기자동차 충전소 정보 API](https://www.data.go.kr/data/15076352/openapi.do)
+- [공공데이터포털 API 활용 가이드](https://www.dinolabs.ai/383)
