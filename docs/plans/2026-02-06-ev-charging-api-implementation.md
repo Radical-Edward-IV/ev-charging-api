@@ -28,10 +28,15 @@
 
 ```json
 {
+  // Display name of the Dev Container in VS Code/Cursor
   "name": "EV Charging API",
+
+  // Use docker-compose for multi-container setup
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace",
+
+  // Features: Java 25 + Gradle, Docker-in-Docker
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "25",
@@ -40,24 +45,43 @@
     },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
+
+  // List of ports to forward from the container
+  "forwardPorts": [
+    8080,  // Spring Boot application
+    5432   // PostgreSQL
+  ],
+
+  // Default user inside the container
+  "remoteUser": "vscode",
+
+  // VS Code/Cursor-specific settings and extensions
   "customizations": {
     "vscode": {
-      "extensions": [
-        "vmware.vscode-boot-dev-pack",
-        "vscjava.vscode-java-pack",
-        "vscjava.vscode-gradle"
-      ],
+      // Default user settings for VS Code/Cursor inside the container
       "settings": {
+        "java.configuration.updateBuildConfiguration": "interactive",
         "java.compile.nullAnalysis.mode": "automatic",
         "[java]": {
           "editor.formatOnSave": true
         }
-      }
+      },
+
+      // Recommended VS Code/Cursor extensions
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-boot-dev-pack",
+        "vscjava.vscode-gradle",
+        "vscodevim.vim",
+        "christian-kohler.path-intellisense",
+        "pkief.material-icon-theme",
+        "esbenp.prettier-vscode"
+      ]
     }
   },
-  "forwardPorts": [8080, 5432],
-  "postCreateCommand": "java -version && gradle --version",
-  "remoteUser": "vscode"
+
+  // Command executed after container is created
+  "postCreateCommand": "java -version && gradle --version"
 }
 ```
 
