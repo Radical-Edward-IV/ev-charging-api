@@ -1,4 +1,15 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(./gradlew:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker ps:*)",
+      "Bash(psql:*)",
+      "Bash(docker run:*)",
+      "Bash(lsof:*)"
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
   }

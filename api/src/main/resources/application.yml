@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/evcharging}
+    username: ${SPRING_DATASOURCE_USERNAME:evuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:evpass}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 8080
+
+openapi:
+  service-key: ${OPEN_API_KEY:}
