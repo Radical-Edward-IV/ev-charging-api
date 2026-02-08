@@ -52,6 +52,7 @@ bin/
 
 # Claude AI
 .claude/
+docs/agent-prompts/
 
 # Environment variables
 .env
