@@ -1,0 +1,176 @@
+{
+	"info": {
+		"name": "EV Charging API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080"
+		},
+		{
+			"key": "stationId",
+			"value": "1"
+		},
+		{
+			"key": "chargerId",
+			"value": "1"
+		}
+	],
+	"item": [
+		{
+			"name": "Stations",
+			"item": [
+				{
+					"name": "전체 충전소 조회 (페이징)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations?page=0&size=10&sort=name,asc",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations"],
+							"query": [
+								{ "key": "page", "value": "0" },
+								{ "key": "size", "value": "10" },
+								{ "key": "sort", "value": "name,asc" }
+							]
+						}
+					}
+				},
+				{
+					"name": "충전소 단건 조회",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/{{stationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "{{stationId}}"]
+						}
+					}
+				},
+				{
+					"name": "주변 충전소 조회",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/nearby?lat=37.4979&lng=127.0276&radius=5",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "nearby"],
+							"query": [
+								{ "key": "lat", "value": "37.4979", "description": "위도 (강남역)" },
+								{ "key": "lng", "value": "127.0276", "description": "경도 (강남역)" },
+								{ "key": "radius", "value": "5", "description": "반경 (km, 기본값: 5)" }
+							]
+						}
+					}
+				},
+				{
+					"name": "충전소 등록",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stationCode\": \"ST-001\",\n  \"name\": \"강남역 충전소\",\n  \"address\": \"서울특별시 강남구 강남대로 396\",\n  \"latitude\": 37.4979,\n  \"longitude\": 127.0276,\n  \"operatorName\": \"한국전력\",\n  \"contactNumber\": \"02-1234-5678\",\n  \"operatingHours\": \"24시간\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations"]
+						}
+					}
+				},
+				{
+					"name": "충전소 수정",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stationCode\": \"ST-001\",\n  \"name\": \"강남역 충전소 (수정)\",\n  \"address\": \"서울특별시 강남구 강남대로 396\",\n  \"latitude\": 37.4979,\n  \"longitude\": 127.0276,\n  \"operatorName\": \"한국전력\",\n  \"contactNumber\": \"02-9999-8888\",\n  \"operatingHours\": \"06:00-23:00\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/{{stationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "{{stationId}}"]
+						}
+					}
+				},
+				{
+					"name": "충전소 삭제",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/{{stationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "{{stationId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Chargers",
+			"item": [
+				{
+					"name": "충전소별 충전기 목록 조회",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/{{stationId}}/chargers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "{{stationId}}", "chargers"]
+						}
+					}
+				},
+				{
+					"name": "충전기 등록",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"chargerCode\": \"CHG-001\",\n  \"type\": \"DC_FAST\",\n  \"powerKw\": 50.0,\n  \"connectorType\": \"CCS1\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/stations/{{stationId}}/chargers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "stations", "{{stationId}}", "chargers"]
+						},
+						"description": "type: DC_FAST | AC_SLOW | DC_COMBO\nconnectorType: CCS1 | CHADEMO | AC_TYPE_1 | AC_TYPE_3"
+					}
+				},
+				{
+					"name": "충전기 상태 변경",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"CHARGING\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/chargers/{{chargerId}}/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "v1", "chargers", "{{chargerId}}", "status"]
+						},
+						"description": "상태 전이 규칙:\n- AVAILABLE → CHARGING, OUT_OF_SERVICE\n- CHARGING → AVAILABLE, OUT_OF_SERVICE\n- OUT_OF_SERVICE → AVAILABLE"
+					}
+				}
+			]
+		}
+	]
+}
