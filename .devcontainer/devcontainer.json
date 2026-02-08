@@ -23,6 +23,11 @@
     5432   // PostgreSQL
   ],
 
+  // Environment variables inside the container
+  "remoteEnv": {
+    "SPRING_PROFILES_ACTIVE": "local"
+  },
+
   // Default user inside the container
   "remoteUser": "vscode",
 
