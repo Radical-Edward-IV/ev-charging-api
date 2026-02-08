@@ -1,10 +1,12 @@
 package com.evcharging.api.api.station;
 
+import com.evcharging.api.config.security.JwtTokenProvider;
 import com.evcharging.api.domain.station.ChargingStation;
 import com.evcharging.api.domain.station.StationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,7 +24,11 @@ class StationControllerTest {
     @MockitoBean
     StationService stationService;
 
+    @MockitoBean
+    JwtTokenProvider jwtTokenProvider;
+
     @Test
+    @WithMockUser
     void findById_returns_station() throws Exception {
         ChargingStation station = new ChargingStation(
                 "ST-001", "Gangnam Station", "Seoul Gangnam-gu",

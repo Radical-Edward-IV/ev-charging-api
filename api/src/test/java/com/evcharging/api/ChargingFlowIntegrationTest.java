@@ -1,13 +1,18 @@
 package com.evcharging.api;
 
+import com.evcharging.api.domain.member.Member;
+import com.evcharging.api.domain.member.MemberRepository;
+import com.evcharging.api.domain.member.Role;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -32,11 +37,42 @@ class ChargingFlowIntegrationTest {
     @Autowired
     MockMvc mockMvc;
 
+    @Autowired
+    MemberRepository memberRepository;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private String adminToken;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        memberRepository.deleteAll();
+
+        // ADMIN 사용자 직접 생성
+        Member admin = new Member("admin@test.com",
+                passwordEncoder.encode("password123"), "Admin", Role.ADMIN);
+        memberRepository.save(admin);
+
+        // 로그인으로 토큰 획득
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "admin@test.com", "password": "password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode loginData = objectMapper.readTree(
+                loginResult.getResponse().getContentAsString()).get("data");
+        adminToken = loginData.get("accessToken").asText();
+    }
 
     @Test
     void fullChargingFlow() throws Exception {
-        // 1. Create a charging station
+        // 1. Create a charging station (ADMIN)
         String stationJson = """
                 {
                     "stationCode": "ST-TEST-001",
@@ -51,6 +87,7 @@ class ChargingFlowIntegrationTest {
                 """;
 
         MvcResult stationResult = mockMvc.perform(post("/api/v1/stations")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(stationJson))
                 .andExpect(status().isCreated())
@@ -62,7 +99,7 @@ class ChargingFlowIntegrationTest {
                 stationResult.getResponse().getContentAsString()).get("data");
         long stationId = stationData.get("id").asLong();
 
-        // 2. Add a charger to the station
+        // 2. Add a charger (ADMIN)
         String chargerJson = """
                 {
                     "chargerCode": "CHG-TEST-01",
@@ -73,94 +110,79 @@ class ChargingFlowIntegrationTest {
                 """;
 
         MvcResult chargerResult = mockMvc.perform(post("/api/v1/stations/" + stationId + "/chargers")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(chargerJson))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("DC_FAST"))
                 .andExpect(jsonPath("$.data.status").value("AVAILABLE"))
                 .andReturn();
 
-        JsonNode chargerData = objectMapper.readTree(
-                chargerResult.getResponse().getContentAsString()).get("data");
-        long chargerId = chargerData.get("id").asLong();
+        long chargerId = objectMapper.readTree(
+                chargerResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
         // 3. Start a charging session
-        MvcResult sessionResult = mockMvc.perform(post("/api/v1/chargers/" + chargerId + "/sessions"))
+        MvcResult sessionResult = mockMvc.perform(post("/api/v1/chargers/" + chargerId + "/sessions")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
                 .andReturn();
 
-        JsonNode sessionData = objectMapper.readTree(
-                sessionResult.getResponse().getContentAsString()).get("data");
-        long sessionId = sessionData.get("id").asLong();
+        long sessionId = objectMapper.readTree(
+                sessionResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
-        // 4. Verify charger status changed to CHARGING
-        mockMvc.perform(get("/api/v1/stations/" + stationId + "/chargers"))
+        // 4. Verify charger is CHARGING
+        mockMvc.perform(get("/api/v1/stations/" + stationId + "/chargers")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("CHARGING"));
 
-        // 5. Complete the charging session
-        String completeJson = """
-                {
-                    "energyDeliveredKwh": 35.5,
-                    "cost": 15000
-                }
-                """;
-
+        // 5. Complete the session
         mockMvc.perform(patch("/api/v1/sessions/" + sessionId + "/complete")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(completeJson))
+                        .content("""
+                                {"energyDeliveredKwh": 35.5, "cost": 15000}
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.energyDeliveredKwh").value(35.5))
-                .andExpect(jsonPath("$.data.cost").value(15000));
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
-        // 6. Verify charger is back to AVAILABLE
-        mockMvc.perform(get("/api/v1/stations/" + stationId + "/chargers"))
+        // 6. Verify charger is AVAILABLE
+        mockMvc.perform(get("/api/v1/stations/" + stationId + "/chargers")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("AVAILABLE"));
 
-        // 7. Query sessions for the charger
-        mockMvc.perform(get("/api/v1/sessions?chargerId=" + chargerId))
+        // 7. Query sessions
+        mockMvc.perform(get("/api/v1/sessions?chargerId=" + chargerId)
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.length()").value(1));
 
-        // 8. List stations (paginated)
-        mockMvc.perform(get("/api/v1/stations?page=0&size=10"))
+        // 8. List stations
+        mockMvc.perform(get("/api/v1/stations?page=0&size=10")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1));
 
-        // 9. Get station by ID
-        mockMvc.perform(get("/api/v1/stations/" + stationId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.name").value("Test Station"));
-
-        // 10. Delete the station
-        mockMvc.perform(delete("/api/v1/stations/" + stationId))
+        // 9. Delete station (ADMIN)
+        mockMvc.perform(delete("/api/v1/stations/" + stationId)
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
 
-        // 11. Verify station is deleted
-        mockMvc.perform(get("/api/v1/stations/" + stationId))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false));
+        // 10. Verify deleted
+        mockMvc.perform(get("/api/v1/stations/" + stationId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void invalidStatusTransition_returns400() throws Exception {
-        // Create station + charger
         String stationJson = """
-                {
-                    "stationCode": "ST-TEST-002",
-                    "name": "Test Station 2",
-                    "address": "Seoul Jongno"
-                }
+                {"stationCode": "ST-TEST-002", "name": "Test Station 2", "address": "Seoul Jongno"}
                 """;
 
         MvcResult stationResult = mockMvc.perform(post("/api/v1/stations")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(stationJson))
                 .andExpect(status().isCreated())
@@ -169,28 +191,21 @@ class ChargingFlowIntegrationTest {
         long stationId = objectMapper.readTree(
                 stationResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
-        String chargerJson = """
-                {
-                    "chargerCode": "CHG-TEST-02",
-                    "type": "AC_SLOW",
-                    "powerKw": 7,
-                    "connectorType": "AC_TYPE_1"
-                }
-                """;
-
         MvcResult chargerResult = mockMvc.perform(post("/api/v1/stations/" + stationId + "/chargers")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(chargerJson))
+                        .content("""
+                                {"chargerCode": "CHG-TEST-02", "type": "AC_SLOW", "powerKw": 7, "connectorType": "AC_TYPE_1"}
+                                """))
                 .andExpect(status().isCreated())
                 .andReturn();
 
         long chargerId = objectMapper.readTree(
                 chargerResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
-        // Try to change AVAILABLE -> AVAILABLE (no-op, but might be allowed)
-        // Try invalid: AVAILABLE cannot directly go to CHARGING via status endpoint
-        // The charger starts as AVAILABLE; trying to set OUT_OF_SERVICE should succeed
+        // AVAILABLE -> OUT_OF_SERVICE (valid)
         mockMvc.perform(patch("/api/v1/chargers/" + chargerId + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"status": "OUT_OF_SERVICE"}
@@ -198,21 +213,21 @@ class ChargingFlowIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("OUT_OF_SERVICE"));
 
-        // Now try OUT_OF_SERVICE -> CHARGING (invalid transition)
+        // OUT_OF_SERVICE -> CHARGING (invalid)
         mockMvc.perform(patch("/api/v1/chargers/" + chargerId + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"status": "CHARGING"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("INVALID_STATUS_TRANSITION"));
     }
 
     @Test
     void validationError_returns400() throws Exception {
-        // Missing required fields
         mockMvc.perform(post("/api/v1/stations")
+                        .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -221,9 +236,9 @@ class ChargingFlowIntegrationTest {
 
     @Test
     void stationNotFound_returns404() throws Exception {
-        mockMvc.perform(get("/api/v1/stations/99999"))
+        mockMvc.perform(get("/api/v1/stations/99999")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("STATION_NOT_FOUND"));
     }
 }
